@@ -59,8 +59,8 @@ public class WorkFlowPxBO {
 		String attrVal = "";
 		while (affItr.hasNext()) {
 			affItemObj = (IItem) affItr.next();
-			itemBomTable = affItemObj.getTable(ItemConstants.TABLE_BOM);
-			logger.info(affItemObj.getName() + " BOM Table count is " + itemBomTable.size());
+			itemBomTable = affItemObj.getTable(ItemConstants.TABLE_REDLINEBOM);
+			logger.info(affItemObj.getName() + "Red Line BOM Table count is " + itemBomTable.size());
 			// Update P2 attribute to BOM/Item if affected item has BOM
 			// components
 			if (itemBomTable.size() > 0)

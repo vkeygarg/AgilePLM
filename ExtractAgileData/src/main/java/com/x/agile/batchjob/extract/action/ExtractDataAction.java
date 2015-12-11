@@ -34,7 +34,8 @@ public class ExtractDataAction {
 			} else {
 				
 				srcObj.getAgileSearchResults();
-				srcObj.getAllBOMItems();
+				//srcObj.getAllBOMItems();
+				srcObj.extractBOMItem();
 				srcObj.getAllMPNMFR();
 				srcObj.getAllChanges();
 				srcObj.createIndexFiles();

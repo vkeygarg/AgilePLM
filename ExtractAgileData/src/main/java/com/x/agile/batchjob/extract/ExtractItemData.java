@@ -18,6 +18,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -62,12 +63,15 @@ public class ExtractItemData {
 	final static Logger logger = Logger.getLogger(ExtractItemData.class);
 	static String DELIMITER = "^";
 	static String timeStamp = "";
+	static String getHistoricalBom = "N";
+	Map<String, Set<String>> bomItemMap = null;
 
 	public void init() throws IOException, APIException {
 
 		loadPropertyFile();
 		this.session = getAgileSession();
 		itemMap = new HashMap<String, Set<String>>();
+		bomItemMap = new HashMap<String, Set<String>>();
 		mfrList = new HashSet<String>();
 		mpnList = new HashSet<String>();
 		chgMap = new HashMap<String, Set<String>>();
@@ -75,6 +79,7 @@ public class ExtractItemData {
 		Calendar calobj = Calendar.getInstance();
 		DateFormat df = new SimpleDateFormat("yyyyMMddHHmm");
 		timeStamp = df.format(calobj.getTime());
+		getHistoricalBom = prop.getProperty("EXTRACT_BOM_HISTORY");
 
 	}
 
@@ -124,6 +129,7 @@ public IAgileSession getAgileSession() throws APIException
 		IFolder folder = (IFolder) session.getObject(IFolder.OBJECT_TYPE, "/" + prop.getProperty("AGL_SEARCH_FOLDER"));
 		IQuery query = (IQuery) folder.getChild(prop.getProperty("AGL_SEARCH_NAME"));
 		ITable results = query.execute();
+		logger.info("Search result count:"+results.size());
 		ITwoWayIterator itr = results.getTableIterator();
 		String itemType = "";
 		while (itr.hasNext()) {
@@ -161,6 +167,140 @@ public IAgileSession getAgileSession() throws APIException
 		return connection;
 	}
 
+	public void searchItems(){
+		logger.info("Start search items");
+		Connection connectionObj = null;
+		Set<String> itemSet = new HashSet<String>();
+		try {
+			connectionObj = getDBConnection();
+		} catch (ClassNotFoundException e) {
+			logger.error(e.getMessage(),e);
+		} catch (SQLException e) {
+			logger.error(e.getMessage(),e);
+		}
+		if (connectionObj != null) {
+			String query = prop.getProperty("DB_SEARCH_QUERY");
+			logger.info("Search DB Query: "+query);
+			Statement st = null;
+			ResultSet rs = null;
+			try {
+				 st = connectionObj.createStatement();
+				 rs = st.executeQuery(query);
+				while(rs.next()){
+					itemSet.add(rs.getString(1));
+				}
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			finally{
+				try {
+					rs.close();
+				
+				st.close();
+				connectionObj.close();
+				} catch (SQLException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+		logger.info("ItemSet size = "+itemSet.size());
+	}
+	
+	
+	private void getBOMItem(IItem parentItem) {
+
+		// IItem itmObj = (IItem)session.getObject(IItem.OBJECT_TYPE,
+		// parentItem);
+		logger.info("parentItem:"+parentItem);
+		if (parentItem != null) {
+			try {
+				if ("Y".equalsIgnoreCase(getHistoricalBom)) {
+					Map revMap = parentItem.getRevisions();
+					Iterator revitr = revMap.keySet().iterator();
+					while (revitr.hasNext()) {
+						parentItem.setRevision(revMap.get(revitr.next()));
+						addToBOMMap(parentItem);
+					}
+				} else {
+					addToBOMMap(parentItem);
+				}
+			} catch (APIException e) {
+				logger.error(e.getMessage() + " for Item: " + parentItem);
+			}
+		}
+	}
+	
+	private void addToBOMMap(IItem parentItem) {
+		Set<String> bomSet = null;
+		String itemNum = "";
+		String itemType = "";
+		try {
+			ITable bomTab = parentItem.getTable(ItemConstants.TABLE_BOM);
+			ITwoWayIterator itr = bomTab.getReferentIterator();
+			while (itr.hasNext()) {
+				IItem bomItem = (IItem) itr.next();
+				itemNum = bomItem.getName();
+				itemType = bomItem.getValue(ItemConstants.ATT_TITLE_BLOCK_ITEM_TYPE).toString();
+				if (bomItemMap.containsKey(itemType)) {
+					bomSet = bomItemMap.get(itemType);
+				} else {
+					bomSet = new HashSet<String>();
+				}
+				if(!bomSet.contains(itemNum)){
+					bomSet.add(itemNum);
+					bomItemMap.put(itemType, bomSet);
+					getBOMItem(bomItem);
+				}
+			}
+		} catch (APIException e) {
+			logger.error(e.getMessage() + " for Item: " + parentItem);
+		}
+		catch (Exception e) {
+			logger.error(e.getMessage() + " for Item: " + parentItem);
+		}
+	}
+	
+	public void extractBOMItem() throws APIException, IOException {
+		logger.info("Start looking for BOM Items");
+		Set<String> itemSet = null;
+		Iterator<String> itemClassItr = itemMap.keySet().iterator();
+		while (itemClassItr.hasNext()) {
+			itemSet = itemMap.get(itemClassItr.next());
+			Iterator<String> itemItr = itemSet.iterator();
+			while (itemItr.hasNext()) {
+				String itemNo = itemItr.next();
+				IItem parentItem = (IItem)session.getObject(IItem.OBJECT_TYPE, itemNo);
+				getBOMItem(parentItem);
+			}
+		}
+		
+		String childListclass = "";
+		Set<String> childListSet = null;
+		Set<String> masterItemSet = null;
+		Iterator<String> childListItr = bomItemMap.keySet().iterator();
+		while (childListItr.hasNext()) {
+			childListclass = childListItr.next();
+			childListSet = bomItemMap.get(childListclass);
+			if (itemMap.containsKey(childListclass)) {
+				masterItemSet = itemMap.get(childListclass);
+				masterItemSet.addAll(childListSet);
+			} else {
+				masterItemSet = childListSet;
+			}
+			itemMap.put(childListclass, masterItemSet);
+		}
+		logger.info("All BOM Items loaded successfully.");
+		
+		
+	}
+	
+	
+	
+	
+	
+	
 	public void getAllBOMItems() {
 		logger.info("Start looking for BOM Items");
 		Map<String, Set<String>> bomMap = new HashMap<String, Set<String>>();
@@ -187,8 +327,11 @@ public IAgileSession getAgileSession() throws APIException
 					itemSet = itemMap.get(itemClassItr.next());
 					Iterator<String> itemItr = itemSet.iterator();
 					while (itemItr.hasNext()) {
+						String itemNo = itemItr.next();
+						try{
 						ps = connectionObj.prepareStatement(query);
-						ps.setString(1, itemItr.next());
+						
+						ps.setString(1, itemNo);
 						rs = ps.executeQuery();
 						while (rs.next()) {
 							itemNum = rs.getString(1);
@@ -203,6 +346,16 @@ public IAgileSession getAgileSession() throws APIException
 						}
 						rs.close();
 						ps.close();
+						}catch(SQLException e){
+							logger.error(e.getMessage()+itemNo);
+						}
+						finally{
+							if(rs!=null)
+								rs.close();
+							if(ps!=null)
+								ps.close();
+								
+						}
 					}
 				}
 				connectionObj.close();
@@ -437,6 +590,154 @@ public IAgileSession getAgileSession() throws APIException
 			logger.error(e.getMessage(),e);
 			throw e;
 		}
+	}
+	
+	public void createDTLSFile(IItem itemObj) throws APIException, IOException{
+		String path = prop.getProperty("BASE_PATH_FOR_OUTPUT_FILES")+timeStamp+"/";
+		logger.info("Start creating data files for Items.");
+		new File(path).mkdirs();
+		String dtlsFileName = path+"/ITEMS_"+itemObj.getAgileClass().getName().replace(" ", "")+"_DTLS.txt"; //indexFileName.replace("Index", "Data").replace(".idx", ".txt").replace("ITEMS_", "ITEMS_DTLS_");
+		genDTLSFile(itemObj,dtlsFileName);
+		
+		String revFileName = path+"/ITEMS_REV.txt";
+		String pendRevFileName = path+"/ITEMS_PENDING_REV.txt";
+		String bomFileName = path+"/ITEMS_BOM.txt";
+		String amlFileName = path+"/ITEMS_AML.txt";
+		
+		createFileForTab("AML",itemObj,amlFileName);
+		createFileForTab("REV",itemObj,revFileName);
+		createFileForTab("BOM",itemObj,bomFileName);
+		createFileForTab("PEND_REV",itemObj,pendRevFileName);
+	}
+	
+	
+	public void populateItemsDTLSOnTheFly() throws APIException, IOException{
+
+		String path = prop.getProperty("BASE_PATH_FOR_OUTPUT_FILES")+timeStamp+"/";
+		logger.info("Start creating data files for Items.");
+		new File(path).mkdirs();
+		String idxFilePath = prop.getProperty("BASE_PATH_FOR_INDEX_FILES")+timeStamp+"/";
+		List<File> files = getFilesfromDir(idxFilePath, ".idx", "ITEMS_");
+		String itemNum = "";
+		IItem itemObj = null;
+		String indexFileName = "";
+		String latestRev = "";
+		String dtlsFileName = "";
+		String amlHeader = "";
+		String bomHeader = "";
+		String revHeader = "";
+		String pendRevHeader = "";
+		String revFileName = path+"/ITEMS_REV.txt";
+		String pendRevFileName = path+"/ITEMS_PENDING_REV.txt";
+		String bomFileName = path+"/ITEMS_BOM.txt";
+		String amlFileName = path+"/ITEMS_AML.txt";
+		
+		
+		for (File idxFile : files) {
+			indexFileName = idxFile.getAbsolutePath();
+			dtlsFileName = indexFileName.replace("Index", "Data").replace(".idx", ".txt").replace("ITEMS_", "ITEMS_DTLS_");
+			BufferedReader br = null;
+			try {
+				br = new BufferedReader(new FileReader(indexFileName));
+				String line = br.readLine();
+				
+				if (line != null && !line.isEmpty()) {
+					itemObj = (IItem)session.getObject(IItem.OBJECT_TYPE, line);
+					if(itemObj!=null)
+						genDTLSFile(itemObj,dtlsFileName);
+				}
+				while (line != null && !line.isEmpty()) {
+					itemNum = line;// .next();
+					itemObj = (IItem) session.getObject(IItem.OBJECT_TYPE, itemNum);
+					if (itemObj != null) {
+						if(amlHeader.isEmpty())
+							amlHeader = createFileForTab("AML",itemObj,amlFileName);
+						if(revHeader.isEmpty())
+							revHeader = createFileForTab("REV",itemObj,revFileName);
+						if(bomHeader.isEmpty())
+							bomHeader = createFileForTab("BOM",itemObj,bomFileName);
+						if(pendRevHeader.isEmpty())
+							pendRevHeader = createFileForTab("PEND_REV",itemObj,pendRevFileName);
+											
+						
+						try{
+							latestRev = itemObj.getRevision();
+							extractDtlsTab(itemObj, dtlsFileName);
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						try{
+							itemObj.setRevision(latestRev);
+							extractChangesTab(itemObj, revFileName);
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						try{
+							itemObj.setRevision(latestRev);
+							extractPendingChangesTab(itemObj, pendRevFileName);
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						try{
+							itemObj.setRevision(latestRev);
+							extractBOMTab(itemObj, bomFileName);
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						try{
+							itemObj.setRevision(latestRev);
+							extractAMLTab(itemObj, amlFileName);
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						try{
+							itemObj.setRevision(latestRev);
+							//extractAttachmentTab(itemObj, indexFileName.replace(".idx", "/attachment"));
+						}
+						catch(APIException e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+						catch(Exception e){
+							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+						}
+					}
+					line = br.readLine();
+				}
+			} catch (FileNotFoundException e) {
+				logger.info("Exception during item:"+itemObj);
+				logger.error(e.getMessage(),e);
+			} catch (IOException e) {
+				logger.info("Exception during item:"+itemObj);
+				logger.error(e.getMessage(),e);
+			} finally {
+				try {
+					br.close();
+				} catch (IOException e) {
+					logger.error(e.getMessage(),e);
+				}
+			}
+		}
+	
 	}
 
 	public void populateItemDetails() throws APIException, IOException {

@@ -59,10 +59,10 @@ public class ExtractItemData {
 	Set<String> mfrList = null;
 	Set<String> mpnList = null;
 	Map<String, Set<String>> chgMap = null;
-	static Properties prop;
+	public static Properties prop;
 	final static Logger logger = Logger.getLogger(ExtractItemData.class);
 	static String DELIMITER = "^";
-	static String timeStamp = "";
+	public static String timeStamp = "";
 	static String getHistoricalBom = "N";
 	Map<String, Set<String>> bomItemMap = null;
 
@@ -776,6 +776,7 @@ public IAgileSession getAgileSession() throws APIException
 				}
 				while (line != null && !line.isEmpty()) {
 					itemNum = line;// .next();
+					try{
 					itemObj = (IItem) session.getObject(IItem.OBJECT_TYPE, itemNum);
 					if (itemObj != null) {
 						if(amlHeader.isEmpty())
@@ -803,51 +804,58 @@ public IAgileSession getAgileSession() throws APIException
 							extractChangesTab(itemObj, revFileName);
 						}
 						catch(APIException e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item Rev for Item:"+itemObj,e);
 						}
 						catch(Exception e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item Rev for Item:"+itemObj,e);
 						}
 						try{
 							itemObj.setRevision(latestRev);
 							extractPendingChangesTab(itemObj, pendRevFileName);
 						}
 						catch(APIException e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item Pending Rev for Item:"+itemObj,e);
 						}
 						catch(Exception e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item Pending Rev for Item:"+itemObj,e);
 						}
 						try{
 							itemObj.setRevision(latestRev);
 							extractBOMTab(itemObj, bomFileName);
 						}
 						catch(APIException e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item BOM Details for Item:"+itemObj,e);
 						}
 						catch(Exception e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item BOM Details for Item:"+itemObj,e);
 						}
 						try{
 							itemObj.setRevision(latestRev);
 							extractAMLTab(itemObj, amlFileName);
 						}
 						catch(APIException e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item AML Details for Item:"+itemObj,e);
 						}
 						catch(Exception e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving Item AML Details for Item:"+itemObj,e);
 						}
 						try{
 							itemObj.setRevision(latestRev);
 							//extractAttachmentTab(itemObj, indexFileName.replace(".idx", "/attachment"));
 						}
 						catch(APIException e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving all Item Details for Item:"+itemObj,e);
 						}
 						catch(Exception e){
-							logger.error("Exception while retreiving Item Details for Item:"+itemObj,e);
+							logger.error("Exception while retreiving all Item Details for Item:"+itemObj,e);
 						}
+					}
+					}
+					catch(APIException e){
+						logger.error("Exception while retreiving Item Details for Item:"+line,e);
+					}
+					catch(Exception e){
+						logger.error("Exception while retreiving Item Details for Item:"+line,e);
 					}
 					line = br.readLine();
 				}
@@ -894,20 +902,17 @@ public IAgileSession getAgileSession() throws APIException
 						genDTLSFile(chgObj,dtlsFileName);
 				}
 				while (line != null && !line.isEmpty()) {
-					chgNum = line;// .next();
-					chgObj = (IChange)session.getObject(IChange.OBJECT_TYPE, chgNum);
-					if (chgObj != null) {
-						try {
+					try {
+						chgNum = line;// .next();
+						chgObj = (IChange) session.getObject(IChange.OBJECT_TYPE, chgNum);
+						if (chgObj != null) {
 							extractDtlsTab(chgObj, dtlsFileName);
-							// extractAttachmentTab(chgObj,
-							// indexFileName.replace(".idx", "/attachment"));
-						} catch (APIException e) {
-							logger.error("Exception while retreiving Change Details for Change:" + chgObj, e);
-						} catch (Exception e) {
-							logger.error("Exception while retreiving Change Details for Change:" + chgObj, e);
 						}
+					} catch (APIException e) {
+						logger.error("Exception while retreiving Change Details for Change:" + line, e);
+					} catch (Exception e) {
+						logger.error("Exception while retreiving Change Details for Change:" + line, e);
 					}
-					
 					line = br.readLine();
 				}
 			} catch (FileNotFoundException e) {
@@ -959,23 +964,20 @@ public IAgileSession getAgileSession() throws APIException
 						genDTLSFile(mpnObj,dtlsFileName);
 				}
 				while (line != null && !line.isEmpty()) {
-					mpnNum = line.split("\\"+DELIMITER)[0];
-					mfrName = line.split("\\"+DELIMITER)[1];
-					param = new HashMap();
-					param.put(ManufacturerPartConstants.ATT_GENERAL_INFO_MANUFACTURER_PART_NUMBER, mpnNum);
-					param.put(ManufacturerPartConstants.ATT_GENERAL_INFO_MANUFACTURER_NAME, mfrName);
-					
-					mpnObj = (IManufacturerPart)session.getObject(IManufacturerPart.OBJECT_TYPE, param);
-					if (mpnObj != null) {
-						try {
+					try {
+						mpnNum = line.split("\\" + DELIMITER)[0];
+						mfrName = line.split("\\" + DELIMITER)[1];
+						param = new HashMap();
+						param.put(ManufacturerPartConstants.ATT_GENERAL_INFO_MANUFACTURER_PART_NUMBER, mpnNum);
+						param.put(ManufacturerPartConstants.ATT_GENERAL_INFO_MANUFACTURER_NAME, mfrName);
+						mpnObj = (IManufacturerPart) session.getObject(IManufacturerPart.OBJECT_TYPE, param);
+						if (mpnObj != null) {
 							extractDtlsTab(mpnObj, dtlsFileName);
-							// extractAttachmentTab(chgObj,
-							// indexFileName.replace(".idx", "/attachment"));
-						} catch (APIException e) {
-							logger.error("Exception while retreiving MPN Details for MPN:" + mpnObj, e);
-						} catch (Exception e) {
-							logger.error("Exception while retreiving MPN Details for MPN:" + mpnObj, e);
 						}
+					} catch (APIException e) {
+						logger.error("Exception while retreiving MPN Details for MPN:" + line, e);
+					} catch (Exception e) {
+						logger.error("Exception while retreiving MPN Details for MPN:" + line, e);
 					}
 					line = br.readLine();
 				}
@@ -1021,17 +1023,16 @@ public IAgileSession getAgileSession() throws APIException
 						genDTLSFile(mfrObj,dtlsFileName);
 				}
 				while (line != null && !line.isEmpty()) {
-					mfrNum = line;// .next();
-					mfrObj = (IManufacturer)session.getObject(IManufacturer.OBJECT_TYPE, mfrNum);
-					if (mfrObj != null) {
-						try{
+					try {
+						mfrNum = line;// .next();
+						mfrObj = (IManufacturer) session.getObject(IManufacturer.OBJECT_TYPE, mfrNum);
+						if (mfrObj != null) {
 							extractDtlsTab(mfrObj, dtlsFileName);
-							//extractAttachmentTab(mfrObj, indexFileName.replace(".idx", "/attachment"));
-						} catch (APIException e) {
-							logger.error("Exception while retreiving MFR Details for MFR:" + mfrObj, e);
-						} catch (Exception e) {
-							logger.error("Exception while retreiving MFR Details for MFR:" + mfrObj, e);
 						}
+					} catch (APIException e) {
+						logger.error("Exception while retreiving MFR Details for MFR:" + line, e);
+					} catch (Exception e) {
+						logger.error("Exception while retreiving MFR Details for MFR:" + line, e);
 					}
 					line = br.readLine();
 				}
